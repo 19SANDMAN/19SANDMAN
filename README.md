@@ -36,8 +36,8 @@
 
 - GitHub: [github.com/19SANDMAN](https://github.com/19SANDMAN)
 - TikTok: [@laan_saen_mee](https://www.tiktok.com/@laan_saen_mee)
-- Facebook Page: IhaveLaanSaenMee
-- YouTube: [SAND AI Channel](https://www.youtube.com/@SANDAI)
+- Facebook Page: [IhaveLaanSaenMee](https://www.facebook.com/IhaveLaanSaenMee/)
+- YouTube: [SAND AI Channel](https://www.youtube.com/@laansaenmeechannal3136)
 
 > ✨ ขอให้ทุกคนสร้างเส้นทางของตัวเองและไม่ยอมแพ้กับความฝัน ✨
 
