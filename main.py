@@ -1,6 +1,7 @@
 import os
 import requests
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from datetime import datetime, timezone
@@ -9,75 +10,71 @@ load_dotenv()
 
 app = FastAPI()
 
+# ===== ENV =====
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 DATABASE_ID = os.getenv("DATABASE_ID")
+API_SECRET = os.getenv("API_SECRET")
 
-if not NOTION_TOKEN or not DATABASE_ID:
-    raise Exception("Missing NOTION_TOKEN or DATABASE_ID")
+if not NOTION_TOKEN or not DATABASE_ID or not API_SECRET:
+    raise Exception("Missing NOTION_TOKEN, DATABASE_ID or API_SECRET")
 
+# ===== Security =====
+security = HTTPBearer()
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if credentials.credentials != API_SECRET:
+        raise HTTPException(status_code=401, detail="Invalid API token")
+    return credentials.credentials
+
+# ===== Notion Headers =====
 NOTION_HEADERS = {
     "Authorization": f"Bearer {NOTION_TOKEN}",
     "Content-Type": "application/json",
     "Notion-Version": "2022-06-28",
 }
 
+# ===== Request Model =====
 class TradeRequest(BaseModel):
     pair: str
     direction: str
-    risk: float
+    entry: float
+    stop_loss: float
+    take_profit: float
     rr: float
+    risk: float
     result: str
-    note: str
-    screenshot_url: str | None = None
+    note: str | None = None
 
-def calculate_r_multiple(rr: float, result: str) -> float:
-    r = result.strip().lower()
-    if r == "win":
-        return rr
-    if r == "loss":
-        return -1
-    return 0
-
-def validate_rr(rr: float):
-    if rr < 1.5:
-        raise HTTPException(status_code=400, detail="RR ต่ำกว่า 1.5 ไม่ผ่านกฎระบบ")
-
+# ===== Endpoint =====
 @app.post("/trade")
-def create_trade(trade: TradeRequest):
-    validate_rr(trade.rr)
-    r_multiple = calculate_r_multiple(trade.rr, trade.result)
+def create_trade(data: TradeRequest, token: str = Depends(verify_token)):
+
+    notion_url = "https://api.notion.com/v1/pages"
 
     payload = {
         "parent": {"database_id": DATABASE_ID},
         "properties": {
-            "Trade": {"title": [{"text": {"content": trade.pair}}]},
-            "Pair": {"select": {"name": trade.pair}},
-            "Direction": {"select": {"name": trade.direction}},
-            "Risk %": {"number": trade.risk},
-            "RR": {"number": trade.rr},
-            "R Multiple": {"number": r_multiple},
-            "Result": {"select": {"name": trade.result}},
+            "Trade": {"title": [{"text": {"content": data.pair}}]},
+            "Pair": {"rich_text": [{"text": {"content": data.pair}}]},
+            "Direction": {"select": {"name": data.direction}},
+            "Entry": {"number": data.entry},
+            "Stop Loss": {"number": data.stop_loss},
+            "Take Profit": {"number": data.take_profit},
+            "RR": {"number": data.rr},
+            "Risk": {"number": data.risk},
+            "Result": {"select": {"name": data.result}},
             "Date": {"date": {"start": datetime.now(timezone.utc).isoformat()}},
-            "Note": {"rich_text": [{"text": {"content": trade.note}}]},
         },
     }
 
-    if trade.screenshot_url:
-        payload["properties"]["Screenshot URL"] = {"url": trade.screenshot_url}
+    if data.note:
+        payload["properties"]["Note"] = {
+            "rich_text": [{"text": {"content": data.note}}]
+        }
 
-    response = requests.post(
-        "https://api.notion.com/v1/pages",
-        headers=NOTION_HEADERS,
-        json=payload,
-        timeout=30,
-    )
+    response = requests.post(notion_url, headers=NOTION_HEADERS, json=payload)
 
-    if response.status_code not in (200, 201):
-        print("NOTION ERROR:", response.status_code, response.text)
-        raise HTTPException(status_code=response.status_code, detail=response.json())
+    if response.status_code != 200:
+        raise HTTPException(status_code=400, detail=response.text)
 
-    return {"status": "success", "r_multiple": r_multiple}
-
-@app.get("/")
-def health():
-    return {"status": "Trading Automation Running"}
+    return {"status": "Trade saved to Notion"}
